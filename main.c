@@ -2,11 +2,10 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
-
 #define ROWS 30
 #define COLS 80
-#define MAX 100
-
+#define MAX  100
+//shapes
 #define RECT 1
 #define LINE 2
 #define CIRC 3
@@ -14,254 +13,384 @@
 
 typedef struct {
     int id, type, active;
-    int x, y, w, h;
-    int ex[4];
-} Sh;
+    int col1, row1;   
+    int col2, row2;   
+    int col3, row3;  
+    int radius;       
+    int width;        
+    int height;      
+} Shape;
 
-char cv[ROWS][COLS];
-Sh sh[MAX];
-int cnt=0, nid=1;
+char  canvas[ROWS][COLS];
+Shape shapes[MAX];
+int   count=0, next_id=1;
 
-// fill canvas with dots
-void initcv() {
-    int i,j;
-    for(i=0;i<ROWS;i++)
-        for(j=0;j<COLS;j++)
-            cv[i][j]='.';
+//Cnavas
+
+void canvas_init(void) {
+    int r,c;
+    for (r=0; r<ROWS;r++)
+        for (c=0;c<COLS;c++)
+            canvas[r][c]='.';
 }
 
-// safe put pixel
-void put(int r, int c, char ch) {
-    if(r>=0&&r<ROWS&&c>=0&&c<COLS)
-        cv[r][c]=ch;
+void pixel(int row, int col, char ch) {
+    if (row>=0&&row<ROWS && col>=0 && col<COLS)
+        canvas[row][col] = ch;
 }
 
-void showcv() {
-    int i,j;
+void canvas_show(void) {
+    int r, c;
+    /* Column ruler */
+    printf("\n     ");
+    for (c=0; c<COLS; c+=10)
+        printf("%-10d",c);
+    printf("\n     ");
+    for (c=0; c<COLS;c++)
+        printf("%c", (c%10==0) ? '|' : '-');
     printf("\n");
-    for(i=0;i<ROWS;i++) {
-        for(j=0;j<COLS;j++)
-            printf("%c",cv[i][j]);
+
+    for (r = 0; r < ROWS; r++) {
+        printf("%3d |", r);
+        for (c = 0; c < COLS; c++)
+            printf("%c", canvas[r][c]);
         printf("\n");
     }
+    printf("     ");
+    for (c = 0; c < COLS; c++)
+        printf("%c", (c % 10 == 0) ? '|' : '-');
+    printf("\n");
 }
 
-// bresenham line
-void dline(int x1,int y1,int x2,int y2,char ch) {
-    int dx=abs(x2-x1), dy=abs(y2-y1);
-    int sx=(x1<x2)?1:-1, sy=(y1<y2)?1:-1;
-    int err=dx-dy, e2;
-    while(1) {
-        put(y1,x1,ch);
-        if(x1==x2&&y1==y2) break;
-        e2=2*err;
-        if(e2>-dy){err-=dy; x1+=sx;}
-        if(e2<dx) {err+=dx; y1+=sy;}
+void draw_line(int c1, int r1, int c2, int r2, char ch) {
+    int dc = abs(c2 - c1), dr = abs(r2 - r1);
+    int sc = (c1 < c2) ? 1 : -1, sr = (r1 < r2) ? 1 : -1;
+    int err = dc - dr, e2;
+    for (;;) {
+        pixel(r1, c1, ch);
+        if (c1 == c2 && r1 == r2) break;
+        e2 = 2 * err;
+        if (e2 > -dr) { err -= dr; c1 += sc; }
+        if (e2 <  dc) { err += dc; r1 += sr; }
     }
 }
 
-// midpoint circle
-void dcirc(int cx,int cy,int r,char ch) {
-    int x=0,y=r,d=1-r;
-    while(x<=y) {
-        put(cy+y,cx+x,ch); put(cy+y,cx-x,ch);
-        put(cy-y,cx+x,ch); put(cy-y,cx-x,ch);
-        put(cy+x,cx+y,ch); put(cy+x,cx-y,ch);
-        put(cy-x,cx+y,ch); put(cy-x,cx-y,ch);
-        if(d<0) d+=2*x+3;
-        else {d+=2*(x-y)+5; y--;}
+void draw_circle(int cc, int cr, int rad, char ch) {
+    int x = 0, y = rad, d = 1 - rad;
+    while (x <= y) {
+        pixel(cr + y, cc + x, ch); pixel(cr + y, cc - x, ch);
+        pixel(cr - y, cc + x, ch); pixel(cr - y, cc - x, ch);
+        pixel(cr + x, cc + y, ch); pixel(cr + x, cc - y, ch);
+        pixel(cr - x, cc + y, ch); pixel(cr - x, cc - y, ch);
+        if (d < 0) d += 2 * x + 3;
+        else     { d += 2 * (x - y) + 5; y--; }
         x++;
     }
 }
 
-// rect border
-void drect(int x,int y,int w,int h,char ch) {
-    int i,j;
-    for(j=x;j<x+w;j++) {
-        put(y,j,ch);
-        put(y+h-1,j,ch);
+void draw_rect(int left, int top, int w, int h, char ch) {
+    int r, c;
+    for (c = left; c < left + w; c++) {
+        pixel(top,         c, ch);
+        pixel(top + h - 1, c, ch);
     }
-    for(i=y;i<y+h;i++) {
-        put(i,x,ch);
-        put(i,x+w-1,ch);
-    }
-}
-
-// triangle = 3 lines
-void dtri(int x1,int y1,int x2,int y2,int x3,int y3,char ch) {
-    dline(x1,y1,x2,y2,ch);
-    dline(x2,y2,x3,y3,ch);
-    dline(x3,y3,x1,y1,ch);
-}
-
-void drawsh(Sh *s) {
-    if(!s->active) return;
-    switch(s->type) {
-        case RECT: drect(s->x,s->y,s->w,s->h,'*'); break;
-        case LINE: dline(s->x,s->y,s->w,s->h,'#'); break;
-        case CIRC: dcirc(s->x,s->y,s->w,'O'); break;
-        case TRI:  dtri(s->x,s->y,s->w,s->h,s->ex[0],s->ex[1],'@'); break;
+    for (r = top; r < top + h; r++) {
+        pixel(r, left,         ch);
+        pixel(r, left + w - 1, ch);
     }
 }
 
-void redraw() {
+void draw_triangle(int c1, int r1, int c2, int r2,
+                   int c3, int r3, char ch) {
+    draw_line(c1, r1, c2, r2, ch);
+    draw_line(c2, r2, c3, r3, ch);
+    draw_line(c3, r3, c1, r1, ch);
+}
+
+//Redraw
+
+void shape_draw(Shape *s) {
+    if (!s->active) return;
+    switch (s->type) {
+        case RECT:
+            draw_rect(s->col1, s->row1, s->width, s->height, '*');
+            break;
+        case LINE:
+            draw_line(s->col1, s->row1, s->col2, s->row2, '#');
+            break;
+        case CIRC:
+            draw_circle(s->col1, s->row1, s->radius, 'O');
+            break;
+        case TRI:
+            draw_triangle(s->col1, s->row1,
+                          s->col2, s->row2,
+                          s->col3, s->row3, '@');
+            break;
+    }
+}
+
+void redraw(void) {
     int i;
-    initcv();
-    for(i=0;i<cnt;i++)
-        drawsh(&sh[i]);
+    canvas_init();
+    for (i = 0; i < count; i++)
+        shape_draw(&shapes[i]);
 }
 
-const char *tname(int t) {
-    switch(t) {
+const char *type_name(int t) {
+    switch (t) {
         case RECT: return "Rectangle";
         case LINE: return "Line";
         case CIRC: return "Circle";
         case TRI:  return "Triangle";
-        default:   return "?";
+        default:   return "Unknown";
     }
 }
 
-// add shapes
-void addrect() {
-    Sh s;
-    memset(&s,0,sizeof(s));
-    s.id=nid++; s.type=RECT; s.active=1;
-    printf("x y: "); scanf("%d%d",&s.x,&s.y);
-    printf("w h: "); scanf("%d%d",&s.w,&s.h);
-    sh[cnt++]=s;
-    redraw();
-    printf("rect added id=%d\n",s.id);
+int read_int_clamped(const char *prompt, int lo, int hi) {
+    int v;
+    for (;;) {
+        printf("%s [%d–%d]: ", prompt, lo, hi);
+        if (scanf("%d", &v) != 1) { while (getchar() != '\n'); continue; }
+        if (v < lo || v > hi) {
+            printf("  ! Must be between %d and %d.\n", lo, hi);
+        } else {
+            return v;
+        }
+    }
 }
 
-void addline() {
-    Sh s;
-    memset(&s,0,sizeof(s));
-    s.id=nid++; s.type=LINE; s.active=1;
-    printf("x1 y1: "); scanf("%d%d",&s.x,&s.y);
-    printf("x2 y2: "); scanf("%d%d",&s.w,&s.h);
-    sh[cnt++]=s;
+//Add shape
+void add_rect(void) {
+    Shape s;
+    memset(&s, 0, sizeof(s));
+    s.id = next_id++; s.type = RECT; s.active = 1;
+
+    printf("\n-- Add Rectangle --\n");
+    printf("Top-left corner:\n");
+    s.col1  = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row1  = read_int_clamped("  row    (y)", 0, ROWS - 1);
+    printf("Size:\n");
+    s.width  = read_int_clamped("  width  (cols)", 1, COLS - s.col1);
+    s.height = read_int_clamped("  height (rows)", 1, ROWS - s.row1);
+
+    shapes[count++] = s;
     redraw();
-    printf("line added id=%d\n",s.id);
+    printf("Rectangle added (id=%d).\n", s.id);
 }
 
-void addcirc() {
-    Sh s;
-    memset(&s,0,sizeof(s));
-    s.id=nid++; s.type=CIRC; s.active=1;
-    printf("cx cy: "); scanf("%d%d",&s.x,&s.y);
-    printf("r: ");     scanf("%d",&s.w);
-    sh[cnt++]=s;
+void add_line(void) {
+    Shape s;
+    memset(&s, 0, sizeof(s));
+    s.id = next_id++; s.type = LINE; s.active = 1;
+
+    printf("\n-- Add Line --\n");
+    printf("Start point:\n");
+    s.col1 = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row1 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+    printf("End point:\n");
+    s.col2 = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row2 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+
+    shapes[count++] = s;
     redraw();
-    printf("circle added id=%d\n",s.id);
+    printf("Line added (id=%d).\n", s.id);
 }
 
-void addtri() {
-    Sh s;
-    memset(&s,0,sizeof(s));
-    s.id=nid++; s.type=TRI; s.active=1;
-    printf("p1 x y: "); scanf("%d%d",&s.x,&s.y);
-    printf("p2 x y: "); scanf("%d%d",&s.w,&s.h);
-    printf("p3 x y: "); scanf("%d%d",&s.ex[0],&s.ex[1]);
-    sh[cnt++]=s;
+void add_circle(void) {
+    Shape s;
+    int max_r;
+    memset(&s, 0, sizeof(s));
+    s.id = next_id++; s.type = CIRC; s.active = 1;
+
+    printf("\n-- Add Circle --\n");
+    printf("Centre:\n");
+    s.col1 = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row1 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+
+    /* Max radius that keeps circle on canvas */
+    max_r = s.col1;
+    if (COLS - 1 - s.col1 < max_r) max_r = COLS - 1 - s.col1;
+    if (s.row1            < max_r) max_r = s.row1;
+    if (ROWS - 1 - s.row1 < max_r) max_r = ROWS - 1 - s.row1;
+    if (max_r < 1) max_r = 1;   /* allow even if partial */
+
+    s.radius = read_int_clamped("  radius", 1, max_r);
+
+    shapes[count++] = s;
     redraw();
-    printf("tri added id=%d\n",s.id);
+    printf("Circle added (id=%d).\n", s.id);
 }
 
-void delsh() {
-    int id,i;
-    printf("id to delete: "); scanf("%d",&id);
-    for(i=0;i<cnt;i++) {
-        if(sh[i].id==id&&sh[i].active) {
-            sh[i].active=0;
+void add_triangle(void) {
+    Shape s;
+    memset(&s, 0, sizeof(s));
+    s.id = next_id++; s.type = TRI; s.active = 1;
+
+    printf("\n-- Add Triangle --\n");
+    printf("Vertex 1:\n");
+    s.col1 = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row1 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+    printf("Vertex 2:\n");
+    s.col2 = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row2 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+    printf("Vertex 3:\n");
+    s.col3 = read_int_clamped("  column (x)", 0, COLS - 1);
+    s.row3 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+
+    shapes[count++] = s;
+    redraw();
+    printf("Triangle added (id=%d).\n", s.id);
+}
+
+//Delete and Modify
+
+void delete_shape(void) {
+    int id, i;
+    printf("Enter shape id to delete: ");
+    scanf("%d", &id);
+    for (i = 0; i < count; i++) {
+        if (shapes[i].id == id && shapes[i].active) {
+            shapes[i].active = 0;
             redraw();
-            printf("deleted id=%d\n",id);
+            printf("Deleted id=%d.\n", id);
             return;
         }
     }
-    printf("not found\n");
+    printf("No active shape with id=%d.\n", id);
 }
 
-void modsh() {
-    int id,i;
-    printf("id to modify: "); scanf("%d",&id);
-    for(i=0;i<cnt;i++) {
-        if(sh[i].id!=id||!sh[i].active) continue;
-        Sh *s=&sh[i];
-        printf("modifying %s id=%d\n",tname(s->type),id);
-        switch(s->type) {
+void modify_shape(void) {
+    int id, i;
+    printf("Enter shape id to modify: ");
+    scanf("%d", &id);
+    for (i = 0; i < count; i++) {
+        if (shapes[i].id != id || !shapes[i].active) continue;
+        Shape *s = &shapes[i];
+        printf("\n-- Modify %s (id=%d) --\n", type_name(s->type), id);
+        switch (s->type) {
             case RECT:
-                printf("new x y: "); scanf("%d%d",&s->x,&s->y);
-                printf("new w h: "); scanf("%d%d",&s->w,&s->h);
+                printf("New top-left corner:\n");
+                s->col1   = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row1   = read_int_clamped("  row    (y)", 0, ROWS - 1);
+                printf("New size:\n");
+                s->width  = read_int_clamped("  width  (cols)", 1, COLS - s->col1);
+                s->height = read_int_clamped("  height (rows)", 1, ROWS - s->row1);
                 break;
             case LINE:
-                printf("new x1 y1: "); scanf("%d%d",&s->x,&s->y);
-                printf("new x2 y2: "); scanf("%d%d",&s->w,&s->h);
+                printf("New start point:\n");
+                s->col1 = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row1 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+                printf("New end point:\n");
+                s->col2 = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row2 = read_int_clamped("  row    (y)", 0, ROWS - 1);
                 break;
-            case CIRC:
-                printf("new cx cy: "); scanf("%d%d",&s->x,&s->y);
-                printf("new r: ");     scanf("%d",&s->w);
+            case CIRC: {
+                int max_r;
+                printf("New centre:\n");
+                s->col1 = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row1 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+                max_r = s->col1;
+                if (COLS - 1 - s->col1 < max_r) max_r = COLS - 1 - s->col1;
+                if (s->row1             < max_r) max_r = s->row1;
+                if (ROWS - 1 - s->row1  < max_r) max_r = ROWS - 1 - s->row1;
+                if (max_r < 1) max_r = 1;
+                s->radius = read_int_clamped("  radius", 1, max_r);
                 break;
+            }
             case TRI:
-                printf("new p1 x y: "); scanf("%d%d",&s->x,&s->y);
-                printf("new p2 x y: "); scanf("%d%d",&s->w,&s->h);
-                printf("new p3 x y: "); scanf("%d%d",&s->ex[0],&s->ex[1]);
+                printf("New vertex 1:\n");
+                s->col1 = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row1 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+                printf("New vertex 2:\n");
+                s->col2 = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row2 = read_int_clamped("  row    (y)", 0, ROWS - 1);
+                printf("New vertex 3:\n");
+                s->col3 = read_int_clamped("  column (x)", 0, COLS - 1);
+                s->row3 = read_int_clamped("  row    (y)", 0, ROWS - 1);
                 break;
         }
         redraw();
-        printf("modified\n");
+        printf("Shape id=%d updated.\n", id);
         return;
     }
-    printf("not found\n");
+    printf("No active shape with id=%d.\n", id);
 }
 
-void listsh() {
-    int i,f=0;
-    printf("\nid   type        info\n");
-    for(i=0;i<cnt;i++) {
-        Sh *s=&sh[i];
-        if(!s->active) continue;
-        f=1;
-        printf("%-4d %-10s ",s->id,tname(s->type));
-        switch(s->type) {
-            case RECT: printf("x=%d y=%d w=%d h=%d",s->x,s->y,s->w,s->h); break;
-            case LINE: printf("(%d,%d)->(%d,%d)",s->x,s->y,s->w,s->h); break;
-            case CIRC: printf("cx=%d cy=%d r=%d",s->x,s->y,s->w); break;
-            case TRI:  printf("(%d,%d)(%d,%d)(%d,%d)",s->x,s->y,s->w,s->h,s->ex[0],s->ex[1]); break;
+void list_shapes(void) {
+    int i, found = 0;
+    printf("\n%-4s  %-10s  %s\n", "id", "type", "details");
+    printf("----  ----------  -----------------------------------\n");
+    for (i = 0; i < count; i++) {
+        Shape *s = &shapes[i];
+        if (!s->active) continue;
+        found = 1;
+        printf("%-4d  %-10s  ", s->id, type_name(s->type));
+        switch (s->type) {
+            case RECT:
+                printf("top-left=(%d,%d)  size=%dx%d",
+                       s->col1, s->row1, s->width, s->height);
+                break;
+            case LINE:
+                printf("(%d,%d) → (%d,%d)",
+                       s->col1, s->row1, s->col2, s->row2);
+                break;
+            case CIRC:
+                printf("centre=(%d,%d)  radius=%d",
+                       s->col1, s->row1, s->radius);
+                break;
+            case TRI:
+                printf("(%d,%d)  (%d,%d)  (%d,%d)",
+                       s->col1, s->row1,
+                       s->col2, s->row2,
+                       s->col3, s->row3);
+                break;
         }
         printf("\n");
     }
-    if(!f) printf("no shapes\n");
+    if (!found) printf("No shapes yet.\n");
 }
 
-void addmenu() {
+//Menus
+void add_menu(void) {
     int c;
-    printf("\n1.rect 2.line 3.circle 4.tri\nchoice: ");
-    scanf("%d",&c);
-    switch(c) {
-        case 1: addrect(); break;
-        case 2: addline(); break;
-        case 3: addcirc(); break;
-        case 4: addtri();  break;
-        default: printf("invalid\n");
+    if (count >= MAX) { printf("Shape limit reached.\n"); return; }
+    printf("\nWhat shape?\n"
+           "  1. Rectangle (*)\n"
+           "  2. Line      (#)\n"
+           "  3. Circle    (O)\n"
+           "  4. Triangle  (@)\n"
+           "choice: ");
+    scanf("%d", &c);
+    switch (c) {
+        case 1: add_rect();     break;
+        case 2: add_line();     break;
+        case 3: add_circle();   break;
+        case 4: add_triangle(); break;
+        default: printf("Invalid choice.\n");
     }
 }
 
-int main() {
+int main(void) {
     int c;
-    initcv();
-    printf("canvas - rect=* line=# circle=O tri=@\n");
-    while(1) {
-        printf("\n1.add 2.delete 3.modify 4.show 5.list 6.exit\nchoice: ");
-        scanf("%d",&c);
-        switch(c) {
-            case 1: addmenu(); break;
-            case 2: delsh();   break;
-            case 3: modsh();   break;
-            case 4: showcv();  break;
-            case 5: listsh();  break;
+    canvas_init();
+
+    printf("=== ASCII Canvas (%d cols x %d rows) ===\n", COLS, ROWS);
+    printf("Symbols:  Rectangle=*  Line=#  Circle=O  Triangle=@\n");
+    printf("Canvas:   column (x): 0=left … %d=right\n", COLS - 1);
+    printf("          row    (y): 0=top  … %d=bottom\n", ROWS - 1);
+
+    for (;;) {
+        printf("\n1.Add shape  2.Delete  3.Modify  "
+               "4.Show canvas  5.List shapes  6.Exit\nchoice: ");
+        if (scanf("%d", &c) != 1) { while (getchar() != '\n'); continue; }
+        switch (c) {
+            case 1: add_menu();     break;
+            case 2: delete_shape(); break;
+            case 3: modify_shape(); break;
+            case 4: canvas_show();  break;
+            case 5: list_shapes();  break;
             case 6: return 0;
-            default: printf("invalid\n");
+            default: printf("Invalid choice.\n");
         }
     }
-    return 0;
 }
